@@ -48,8 +48,8 @@ module App
     loader.tag = Liza.to_s
 
     # ORDER MATTERS: IGNORE, COLLAPSE, PUSH
-    loader.collapse "#{fname_for Liza}/**/*"
-    loader.push_dir "#{fname_for Liza}", namespace: Liza
+    loader.collapse "#{Liza.source_location_radical}/**/*"
+    loader.push_dir "#{Liza.source_location_radical}", namespace: Liza
 
     loader.enable_reloading
     loader.setup
@@ -69,8 +69,8 @@ module App
 
     @systems.each do |k, klass|
       # ORDER MATTERS: IGNORE, COLLAPSE, PUSH
-      loader.collapse "#{fname_for klass}/**/*"
-      loader.push_dir "#{fname_for klass}", namespace: klass
+      loader.collapse "#{klass.source_location_radical}/**/*"
+      loader.push_dir "#{klass.source_location_radical}", namespace: klass
     end
 
     # ORDER MATTERS: IGNORE, COLLAPSE, PUSH
@@ -83,6 +83,8 @@ module App
     @systems.each do |k, klass|
       connect_system k, klass
     end
+
+    @systems.freeze
   end
 
   # loaders
@@ -187,14 +189,6 @@ module App
 
     end
     log "CONNECTING SYSTEM - #{t.diff}s for #{color_system_klass} to connect to #{registrar_index} system parts"
-  end
-
-  #
-
-  def fname_for klass
-    # /path/to/liza.rb
-    # /path/to/liza
-    Object.const_source_location(klass.name)[0][0..-4]
   end
 
 end

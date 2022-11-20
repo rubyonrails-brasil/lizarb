@@ -34,8 +34,8 @@ class DevSystem
       tc_liza   = tc_namespaced.select &proc_liza
       tc_system = tc_namespaced.reject &proc_liza
 
-      tc_app.sort_by! { |tc| Object.const_source_location(tc.name)[0] }
-      tc_liza.sort_by! { |tc| Object.const_source_location(tc.name)[0] }
+      tc_app.sort_by! &:source_location
+      tc_liza.sort_by! &:source_location
 
       [tc_liza, tc_system, tc_app].flatten
     end
