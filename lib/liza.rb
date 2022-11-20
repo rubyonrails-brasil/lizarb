@@ -49,6 +49,8 @@ module Liza
   end
 
   def const_check_systems name
+    App.systems.frozen? or return nil
+
     for k in App.systems.values.reverse
       next if not k.const_defined? name.to_sym
       kk = k.const(name) if k.constants.include? name

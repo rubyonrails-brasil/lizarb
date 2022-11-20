@@ -7,6 +7,8 @@ module Liza
       App.connect_part self, key, system
     end
 
+    part :unit_procedure
+
     # SETTINGS
 
     def self.settings
