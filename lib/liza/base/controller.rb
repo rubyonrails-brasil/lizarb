@@ -1,5 +1,7 @@
 module Liza
   class Controller < Unit
+    part :controller_renderer
+
     inherited_explicitly_sets_system
 
     def self.on_connected box_klass, panel
