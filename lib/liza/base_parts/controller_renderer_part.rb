@@ -40,13 +40,13 @@ Did you forget to add ERuby keys?
     end
 
     def self.get_renderers
-      ret = {}
-      get_renderers_from_file ret
-      get_renderers_from_folder ret
-      ret
+      renderers = {}
+      get_renderers_from_file renderers
+      get_renderers_from_folder renderers
+      renderers
     end
 
-    def self.get_renderers_from_file ret
+    def self.get_renderers_from_file renderers
       fname = "#{source_location_radical}.rb"
       lines = File.readlines fname
 
@@ -54,7 +54,7 @@ Did you forget to add ERuby keys?
       return if lineno.nil?
 
       content = lines[lineno+1..-1].join
-      array = content.split(/# (\w*).(\w*).(\w*)/)
+      array = content.split(/^# (\w*).(\w*).(\w*)$/)
       # => ["", "a", "html", "erb", "\n<html>\n<a></a>\n</html>\n", "b", "html", "erb", "\n<html>\n<b></b>\n</html>"]
 
       while (chunk = array.pop 4; chunk.size == 4)
@@ -62,17 +62,17 @@ Did you forget to add ERuby keys?
         # => ["a", "html", "erb", "\n<html>\n<a></a>\n</html>\n"]
         key = "#{chunk[0]}.#{chunk[1]}.#{chunk[2]}"
         content = chunk[3]
-        ret[key] = renderer.create_erb content, fname, lineno
+        renderers[key] = Liza::Erb.from_file key, content, fname, lineno
       end
     end
 
-    def self.get_renderers_from_folder ret
+    def self.get_renderers_from_folder renderers
       pattern = "#{source_location_radical}/*.erb"
       fnames = Dir[pattern]
       fnames.each do |fname|
         key = fname.split("/").last
         content = File.read fname
-        ret[key] = renderer.create_erb content, fname, 0
+        renderers[key] = Liza::Erb.from_folder key, content, fname
       end
     end
 
@@ -80,24 +80,26 @@ Did you forget to add ERuby keys?
 
     def render *keys
       if keys.any?
-        log "render #{keys.join ", "}" if keys.any?
-        renderer.render keys, binding
+        _log_render_in keys
+        renderer.render keys, binding, self
       elsif renderer.stack.any?
         renderer.stack.pop
       else
         raise EmptyRenderStack, EMPTY_RENDER_STACK_MESSAGE, caller
       end
     end
+
+    def _log_render_in keys
+      if renderer.stack.any?
+        log "render ↓ #{keys.join ", "}"
+      else
+        log "render #{"→ " * keys.size}#{keys.join ", "}"
+      end
+    end
   end
 
   extension do
     # CLASS
-
-    def self.create_erb content, filename, lineno
-      erb = ERB.new(content)
-      erb.filename, erb.lineno = filename, lineno
-      erb
-    end
 
     def self.log(...)
       solder.log(...)
@@ -117,58 +119,55 @@ Did you forget to add ERuby keys?
       @stack ||= []
     end
 
-    def render keys, the_binding
-      erbs = erbs_for keys
-      erbs.to_a.reverse.each do |key, erb|
-        t = Time.now
-        s = _render erb, the_binding
-        t = t.diff
-        log "       #{key.ljust_blanks 20} with #{s.length.to_s.rjust_blanks 4} characters in #{t}s"
+    def render keys, the_binding, receiver
+      erbs = find_erbs_for(keys).to_a
 
-        s = render_wrap_html s, erb if key.end_with?(".html")
+      erbs.reverse.each do |key, erb|
+        t = Time.now
+        s = erb.result the_binding, receiver
+        _log_render_out key, s.length, t.diff
+        s = wrap_comment_tags s, erb if App.mode == :code && erb.tags?
         stack.push s
       end
 
       stack.pop
     end
 
-    def _render erb, the_binding
-      erb.result the_binding
-    rescue StandardError => e
-      puts e.full_message
-      puts "backtrace:"
-      puts e.backtrace
-      raise
-    end
-
-    def render_wrap_html s, erb
-      "<!-- #{erb.filename.split("/").last}:#{erb.lineno} -->\n#{s}\n<!-- #{erb.filename.split("/").last} -->"
-    end
-
-    def erbs_for keys
+    def find_erbs_for keys
       ret = {}
       keys.each do |key|
-        erb = erb_for key
+        key = "#{key}.erb"
 
-        if erb
-          ret[key] = erb
+        controller = solder.class.controller_ancestors.
+          find { |controller| controller.renderers.has_key? key }
+
+        if controller
+          ret[key] = controller.renderers[key]
         else
-          log "Failed to find ERuby #{"#{key}.erb".red} in #{solder.class}.render_paths"
-          solder.render_paths.each { |s| log "  #{s}/#{"#{key}.erb".red}" }
-          raise RendererNotFound, "Failed to find ERuby #{key}.erb"
+          raise_renderer_not_found key
         end
       end
 
       ret
     end
 
-    def erb_for key
-      key = "#{key}.erb"
-      solder.class.controller_ancestors.each do |controller|
-        erb = controller.renderers[key]
-        return erb if erb
-      end
-      nil
+    def raise_renderer_not_found key
+      raise RendererNotFound,  %|Failed to find ERuby #{key}
+Failed to find ERuby #{"#{key}".red} in #{solder.class}.render_paths
+#{solder.render_paths.map { |s| "  #{s}/#{"#{key}".red}" }.join}|
     end
+
+    def _log_render_out key, length, t
+      if stack.any?
+        log "render #{"↑ #{key}".ljust_blanks 20} with #{length.to_s.rjust_blanks 4} characters in #{t}s"
+      else
+        log "render #{"← #{key}".ljust_blanks 20} with #{length.to_s.rjust_blanks 4} characters in #{t}s"
+      end
+    end
+
+    def wrap_comment_tags s, erb
+      "<!-- #{erb.filename.split("/").last}:#{erb.lineno} -->\n#{s}\n<!-- #{erb.filename.split("/").last} -->"
+    end
+
   end
 end
